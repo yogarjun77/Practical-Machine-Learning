@@ -1,0 +1,137 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "yogarjun77"
+date: "March 20, 2016"
+output: html_document
+---
+
+##**Introduction**##
+
+This assignment is to utilize the knowledge gained from this course to create a working machine learning model that accurately predicts the outcome of the test set.
+
+The data for this project comes from the HUMAN ACTIVITY RECOGNITION (HAR) study - Weight Lifting Dataset.
+Source: http://groupware.les.inf.puc-rio.br/har. 
+
+
+##**Description of Data Set**##
+This research dataset is to investigate "how (well)" an activity was performed by the wearer. 
+Participants were supervised by an experienced weight lifter to make sure the execution complied with the manner they were supposed to simulate. Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions. The measurements were recorded and the final dataset column "classe" categorizes the 5 variations as shown below: 
+
+Class  | Description
+------------- | -------------
+A  | exactly according to the specification 
+B  | throwing the elbows to the front
+C  | lowering the dumbbell only halfway: lifting the dumbbell only halfway
+D  | lowering the dumbbell only halfway
+E  | throwing the hips to the front
+
+##**Goal / Key Question**##
+The goal of this assignment is to predict the manner in which they did the exercise using the available data in training set. Is it A, B, C, D or E class?
+
+##**Loading and Exploring the Data**##
+
+####Load the libraries, and set seed to ensure reproducibility
+
+
+```{r load, echo = TRUE}
+library(caret)
+library(randomForest)
+set.seed(552255)
+
+
+trainLink <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testLink <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainLink), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testLink), na.strings=c("NA","#DIV/0!",""))
+dim(training)
+dim(testing)
+
+```
+
+
+
+####Quick check of the columns to understand the data
+
+
+```{r quickcheck, echo = TRUE}
+str(training[,1:80])
+str(training[,81:160])
+
+#From this - we can see the first 7 columns are not relevant for this prediction exercise as they are factor variables, fixed integers and timestamps.
+
+#Another point is that many columns are derivatives of the measurements(mean, std. dev etc)  and show NA result. These should be removed to focus on the variables that are most relevant.
+
+#Perform quick cleanup removing first 7 columns and those with "NA"
+
+training <- training[, 8:160]
+no_NA_col  <- apply(!is.na(training), 2, sum) > 19620
+training <- training[, no_NA_col]
+dim(training)
+```
+
+
+##**Preprocessing & Feature Selection**##
+####New training dataset has only 53 columns. Check near zero covariates to ensure all columns used are significant:
+```{r feature, echo = TRUE}
+nzv <- nearZeroVar(training, saveMetrics = TRUE)
+nrow(nzv$nzv==FALSE)
+#So all 53 columns are not NZV and can be used for prediction purpose - column 53 (classe) is the expected outcome.
+
+
+#Remove highly correlated variables
+Cor_Matrix <- cor(training[,-53])
+dim(Cor_Matrix)
+High.cor <- findCorrelation(Cor_Matrix, cutoff = .80, verbose = FALSE)
+training <- training[,-High.cor]
+dim(training)
+#The final training dataset has 40 columns
+```
+
+
+##**Training and Cross Validation Data Set Split**##
+
+####Split a segment of  training data set to form cross-validation set. 
+```{r split, echo = TRUE}
+InTrain <- createDataPartition(y = training$classe, p = 0.7, list = FALSE)
+training <- training[InTrain,]
+testing_cv <- training[-InTrain,] #cross validation set
+```
+
+
+
+##**Applying algorithms and performing cross validation**##
+
+
+####There are many possible algorithms, but random forest is selected as it classifies much data with accuracy.
+
+####Using caret package random forest algorithm, train control using cross validation, K-fold
+
+```{r randomforest, echo = TRUE}
+modFit <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE )
+modFit
+predict_cv <- predict(modFit, newdata = testing_cv) #test on cross validation set
+confusionMatrix(testing_cv$classe,predict_cv)
+```
+
+####As the prediction model seems to provide a high accuracy, we proceed to select this model and use it on the test set.
+
+##**Prediction of test set**##
+
+```{r predict test}
+
+predict(modFit, testing)
+```
+
+##**Conclusion**##
+
+The random forest model provided an accuracy of 100% when tested with the cross-validation set. The sensitivity, specificity are also high.
+
+Successfully able to predict all the test set correctly.
+
+##**Notes**##
+
+####Timestamp data considered not relevant for the purpose of this prediction
+
+####Data citation: 
+####Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
